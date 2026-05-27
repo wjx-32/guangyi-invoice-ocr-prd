@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>广医一院 · 经费报销发票 OCR 识别与自动回填（原型）</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 14px;
+    color: #333;
+    min-height: 100vh;
+    background-color: #f0f5ff;
+    background-image:
+      linear-gradient(90deg, rgba(22, 119, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(rgba(22, 119, 255, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  /* 顶部导航 */
+  .top-nav {
+    height: 48px;
+    background: #1677ff;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    font-size: 14px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  }
+  .top-nav a {
+    color: inherit;
+    text-decoration: none;
+    padding: 0 14px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .top-nav a:hover { background: rgba(255, 255, 255, 0.12); }
+  .top-nav .caret { font-size: 10px; margin-left: 3px; opacity: 0.85; }
+  .top-nav .right { margin-left: auto; display: flex; gap: 4px; }
+
+  /* 主体两栏 */
+  .layout { display: flex; min-height: calc(100vh - 48px); }
+  .side {
+    width: 120px;
+    background: #fff;
+    border-right: 1px solid #f0f0f0;
+    padding: 12px 0;
+  }
+  .side .tab {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #595959;
+    cursor: pointer;
+    position: relative;
+  }
+  .side .tab.active {
+    color: #1677ff;
+    background: #e6f0ff;
+    font-weight: 500;
+  }
+  .side .tab.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 3px;
+    background: #1677ff;
+  }
+
+  .main {
+    flex: 1;
+    padding: 16px 20px 28px;
+    max-width: 1400px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+  .block-title {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111;
+    margin: 0 0 18px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .block-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: #1677ff;
+    border-radius: 2px;
+    margin-right: 8px;
+  }
+
+  /* 只读信息网格 */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    column-gap: 36px;
+    row-gap: 12px;
+    font-size: 14px;
+    color: #262626;
+  }
+  .info-grid .item label {
+    color: #595959;
+    margin-right: 6px;
+  }
+  .info-grid .item .val { color: #262626; }
+  .info-grid .item .val.empty { color: #bfbfbf; }
+
+  /* 表单 */
+  .form-row {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 16px;
+  }
+  .form-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .form-item.col { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .form-item label {
+    width: 92px;
+    flex-shrink: 0;
+    color: #262626;
+    text-align: right;
+    font-size: 14px;
+  }
+  .form-item label.req::before {
+    content: '*';
+    color: #ff4d4f;
+    margin-right: 4px;
+  }
+  .form-item input,
+  .form-item select {
+    flex: 1;
+    height: 32px;
+    padding: 4px 11px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #262626;
+    outline: none;
+    background: #fff;
+    transition: border-color .2s;
+    font-family: inherit;
+  }
+  .form-item input::placeholder { color: #bfbfbf; }
+  .form-item input:hover, .form-item select:hover { border-color: #4096ff; }
+  .form-item input:focus, .form-item select:focus {
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
+  }
+
+  /* 收款方块 */
+  .payee-block {
+    background: #fafafa;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-top: 8px;
+  }
+  .payee-block .ph-title {
+    font-weight: 600;
+    color: #111;
+    margin-bottom: 12px;
+  }
+  .invoice-label {
+    color: #262626;
+    margin: 12px 0 8px;
+  }
+  .invoice-label::before { content: '*'; color: #ff4d4f; margin-right: 4px; }
+
+  /* 已保存发票卡片 */
+  .invoice-card {
+    position: relative;
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 4px;
+    padding: 16px 20px 14px;
+    margin-bottom: 12px;
+  }
+  .invoice-card .ops {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-size: 13px;
+    color: #bfbfbf;
+  }
+  .invoice-card .ops a {
+    color: #1677ff;
+    text-decoration: none;
+    margin-left: 4px;
+    cursor: pointer;
+  }
+  .invoice-card .ops a:hover { color: #4096ff; }
+  .invoice-card .ops .sep { margin: 0 6px; color: #d9d9d9; }
+  .invoice-card .tag-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 2px;
+    font-size: 12px;
+    line-height: 20px;
+    border: 1px solid transparent;
+  }
+  .tag .dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; }
+  .tag-pass { color: #389e0d; background: #f6ffed; border-color: #b7eb8f; }
+  .tag-pass .dot { background: #52c41a; }
+  .tag-fail { color: #cf1322; background: #fff1f0; border-color: #ffa39e; }
+  .tag-fail .dot { background: #ff4d4f; }
+  .tag-warn { color: #d46b08; background: #fff7e6; border-color: #ffd591; }
+  .tag-warn .dot { background: #fa8c16; }
+  .tag-info { color: #096dd9; background: #e6f4ff; border-color: #91caff; }
+  .tag-info .dot { background: #1677ff; }
+  .tag-default { color: #595959; background: #fafafa; border-color: #d9d9d9; }
+  .tag-default .dot { background: #bfbfbf; }
+
+  .invoice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 36px;
+    row-gap: 10px;
+    color: #262626;
+  }
+  .invoice-grid .item label { color: #595959; margin-right: 6px; }
+  .pdf-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 44px;
+    border-radius: 4px;
+    background: #fff1f0;
+    color: #cf1322;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid #ffccc7;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  .pdf-icon:hover { background: #ffe7e3; }
+
+  .add-invoice {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 32px;
+    padding: 0 16px;
+    border: 1px solid #1677ff;
+    color: #1677ff;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    margin-top: 4px;
+  }
+  .add-invoice:hover { background: #e6f0ff; }
+
+  .new-payee {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 40px;
+    border: 1px dashed #91caff;
+    color: #1677ff;
+    border-radius: 4px;
+    cursor: pointer;
+    background: #fff;
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  .new-payee:hover { background: #f0f7ff; border-color: #1677ff; }
+
+  /* 浮窗 */
+  .modal-mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 60px 0;
+  }
+  .modal-mask.show { display: flex; }
+  .modal {
+    width: 640px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    overflow: hidden;
+    position: relative;
+  }
+  .modal-recognizing-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: rgba(255, 255, 255, 0.88);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+  }
+  .modal-recognizing-overlay.show { display: flex; }
+  .modal-recognizing-overlay .recognizing-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    color: #0958d9;
+    font-size: 15px;
+  }
+  .modal-recognizing-overlay .recognizing-box .spinner {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+  }
+  .modal-header {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .modal-header .title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111;
+  }
+  .modal-header .close {
+    cursor: pointer;
+    color: #8c8c8c;
+    font-size: 18px;
+    border: none;
+    background: none;
+  }
+  .modal-body { padding: 16px 20px 4px; max-height: 70vh; overflow-y: auto; }
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #f0f0f0;
+    text-align: right;
+    background: #fafafa;
+  }
+
+  /* 状态条 */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .status-bar.info { background: #e6f4ff; border: 1px solid #91caff; color: #0958d9; }
+  .status-bar.loading { background: #e6f4ff; border: 1px solid #91caff; color: #0958d9; }
+  .status-bar.success { background: #f6ffed; border: 1px solid #b7eb8f; color: #389e0d; }
+  .status-bar.warn { background: #fff7e6; border: 1px solid #ffd591; color: #d46b08; }
+  .status-bar.error { background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322; }
+  .status-bar .icon { font-weight: 700; }
+  .status-bar .action {
+    margin-left: auto;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .status-bar .status-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .status-bar .status-actions .action { margin-left: 0; }
+  .status-bar .status-actions .action-primary {
+    text-decoration: none;
+    padding: 0 12px;
+    height: 24px;
+    line-height: 22px;
+    border-radius: 4px;
+    background: #1677ff;
+    border: 1px solid #1677ff;
+    color: #fff;
+    font-size: 12px;
+  }
+  .status-bar .status-actions .action-primary:hover {
+    background: #4096ff;
+    border-color: #4096ff;
+    color: #fff;
+    opacity: 1;
+  }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 发票上传（现网样式） */
+  .invoice-upload-line { align-items: flex-start; }
+  .invoice-upload-line > label.lbl { margin-top: 6px; }
+  .invoice-file-wrap { display: inline-block; }
+  .invoice-upload-block { display: block; }
+  .invoice-file-empty {
+    width: 104px;
+    height: 104px;
+    border: 1px dashed #d9d9d9;
+    background: #fff;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #595959;
+    font-size: 14px;
+    transition: border-color .2s, color .2s;
+  }
+  .invoice-file-empty:hover { border-color: #1677ff; color: #1677ff; }
+  .invoice-file-empty svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    fill: none;
+  }
+  .invoice-upload-tip {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #8c8c8c;
+    line-height: 1.6;
+  }
+  .invoice-file-preview {
+    position: relative;
+    width: 104px;
+    height: 104px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .invoice-file-preview .file-thumb {
+    width: 52px;
+    height: 64px;
+    background: #fff1f0;
+    border: 1px solid #ffccc7;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #cf1322;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .invoice-file-preview .file-actions {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .invoice-file-preview:hover .file-actions { opacity: 1; }
+  .invoice-file-preview .file-action-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .invoice-file-preview .file-action-btn:hover { opacity: 0.85; }
+  .invoice-file-preview .file-action-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  /* 弹窗内表单 */
+  .modal .form-item label { width: 84px; text-align: right; }
+  .modal .form-item.col label { text-align: left; }
+  .modal .field-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .modal .field-line > label.lbl {
+    width: 98px;
+    min-width: 98px;
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
+    color: #262626;
+  }
+  .modal .field-line > label.lbl.req::before {
+    content: '*';
+    color: #ff4d4f;
+    margin-right: 4px;
+  }
+  .modal .field-line .ctrl { flex: 1; display: flex; align-items: center; gap: 8px; }
+  .modal .field-line input[type=text],
+  .modal .field-line input[type=date],
+  .modal .field-line select {
+    flex: 1;
+    height: 32px;
+    padding: 4px 11px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #262626;
+    outline: none;
+    font-family: inherit;
+    background: #fff;
+  }
+  .modal .field-line .badge {
+    font-size: 12px;
+    height: 22px;
+    line-height: 20px;
+    padding: 0 6px;
+    border-radius: 2px;
+    border: 1px solid #91caff;
+    background: #e6f4ff;
+    color: #0958d9;
+    flex-shrink: 0;
+  }
+  .modal .field-line .badge.modified {
+    background: #fff7e6;
+    color: #d46b08;
+    border-color: #ffd591;
+  }
+  .modal .field-line input:disabled {
+    background: #f5f5f5;
+    color: #bfbfbf;
+    cursor: not-allowed;
+  }
+  .modal .invoice-no { display: flex; flex: 1; align-items: center; gap: 6px; }
+  .modal .invoice-no .sep { color: #8c8c8c; }
+  .modal .radio-group { display: flex; gap: 20px; align-items: center; }
+  .modal .radio-group label { color: #262626; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .modal .hint { font-size: 12px; color: #8c8c8c; margin-left: 106px; margin-top: -8px; margin-bottom: 12px; }
+
+  .btn {
+    height: 32px;
+    padding: 0 18px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid #d9d9d9;
+    background: #fff;
+    color: #595959;
+    font-family: inherit;
+    margin-left: 8px;
+  }
+  .btn:hover { color: #1677ff; border-color: #1677ff; }
+  .btn.primary { background: #1677ff; border-color: #1677ff; color: #fff; }
+  .btn.primary:hover { background: #4096ff; border-color: #4096ff; color: #fff; }
+  .btn:disabled, .btn.primary:disabled {
+    cursor: not-allowed;
+    background: #f5f5f5;
+    border-color: #d9d9d9;
+    color: #bfbfbf;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.78);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 2000;
+    display: none;
+  }
+  .toast.show { display: block; }
+
+  /* 工具栏：原型说明 */
+  .demo-bar {
+    background: #fffbe6;
+    border: 1px solid #ffe58f;
+    color: #874d00;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .demo-bar b { color: #ad6800; }
+  .demo-bar .demo-btn {
+    border: 1px solid #1677ff;
+    color: #1677ff;
+    background: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .demo-bar .demo-btn:hover { background: #e6f0ff; }
+  .demo-bar .demo-btn-fail {
+    border-color: #fa8c16;
+    color: #d46b08;
+  }
+  .demo-bar .demo-btn-fail:hover { background: #fff7e6; border-color: #fa8c16; }
+</style>
+</head>
+<body>
+<header class="top-nav">
+  <a href="#">工作台</a>
+  <a href="#">项目管理<span class="caret">▾</span></a>
+  <a href="#" style="background:rgba(255,255,255,.18);">经费管理<span class="caret">▾</span></a>
+  <a href="#">成果管理<span class="caret">▾</span></a>
+  <a href="#">科研办公<span class="caret">▾</span></a>
+  <a href="#">科研统计<span class="caret">▾</span></a>
+  <a href="#">学术任职<span class="caret">▾</span></a>
+  <a href="#">更多<span class="caret">▾</span></a>
+  <div class="right">
+    <a href="#">广州医科大学附属第一医院 ▾</a>
+    <a href="#">刘远捷 ▾</a>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <div class="tab active">项目信息</div>
+    <div class="tab">基本信息</div>
+    <div class="tab">报销信息</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- 项目信息 -->
+    <section class="card">
+      <h2 class="block-title">项目信息</h2>
+      <div class="info-grid">
+        <div class="item"><label>项目名称：</label><span class="val">04150415测试测试</span></div>
+        <div class="item"></div>
+        <div class="item"><label>项目编号：</label><span class="val">04150415测试测试</span></div>
+        <div class="item"><label>项目负责人：</label><span class="val">刘远捷</span></div>
+        <div class="item"><label>项目总经费（元）：</label><span class="val">100,000.00</span></div>
+        <div class="item"></div>
+        <div class="item"><label>专项经费（元）：</label><span class="val">100,000.00</span></div>
+        <div class="item"><label>配套经费（元）：</label><span class="val">0.00</span></div>
+        <div class="item"><label>备注（专项经费）：</label><span class="val empty">-</span></div>
+        <div class="item"><label>备注（配套经费）：</label><span class="val empty">-</span></div>
+        <div class="item"><label>已到账专项经费（元）：</label><span class="val">100,000.00</span></div>
+        <div class="item"><label>已到账配套经费（元）：</label><span class="val">0.00</span></div>
+        <div class="item"><label>剩余专项经费（元）：</label><span class="val">64,000.00</span></div>
+        <div class="item"><label>剩余配套经费（元）：</label><span class="val">0.00</span></div>
+        <div class="item"><label>相关附件：</label><span class="val empty">-</span></div>
+      </div>
+    </section>
+
+    <!-- 基本信息 -->
+    <section class="card">
+      <h2 class="block-title">基本信息</h2>
+
+      <div class="demo-bar">
+        <b>原型演示（V2.1）：</b> 本期仅 OCR 识别与自动回填，<b>不含验真</b>。
+        <button class="demo-btn" onclick="demoSimulate('success')">模拟成功</button>
+        <button class="demo-btn demo-btn-fail" onclick="demoSimulate('fail')">模拟失败</button>
+        <span style="color:#874d00;">选择后打开弹窗，点击「上传」自动模拟上传并识别。</span>
+      </div>
+
+      <div class="form-row">
+        <div class="form-item">
+          <label class="req" style="width:84px;">报销方式：</label>
+          <select>
+            <option>银行转账</option>
+            <option>现金</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label class="req" style="width:84px;">报销时间：</label>
+          <input type="date" value="2026-05-27" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-item">
+          <label class="req" style="width:84px;">经办人：</label>
+          <input type="text" placeholder="请输入" />
+        </div>
+        <div class="form-item">
+          <label class="req" style="width:84px;">经办人电话：</label>
+          <input type="text" placeholder="请输入" />
+        </div>
+      </div>
+
+      <div style="margin-top:8px;color:#262626;">收款方信息：</div>
+
+      <div class="payee-block">
+        <div class="ph-title">收款方</div>
+        <div class="form-row">
+          <div class="form-item">
+            <label class="req" style="width:84px;">收款方：</label>
+            <input type="text" placeholder="请输入" />
+          </div>
+          <div class="form-item">
+            <label class="req" style="width:84px;">收款方电话：</label>
+            <input type="text" placeholder="请输入" />
+          </div>
+        </div>
+
+        <div class="invoice-label">发票信息：</div>
+
+        <!-- 已保存发票卡片 1 -->
+        <div class="invoice-card" id="card-1">
+          <div class="ops">
+            <a onclick="openModal('edit', 1)">编辑</a><span class="sep">|</span><a onclick="deleteCard(1)">删除</a>
+          </div>
+          <div class="invoice-grid">
+            <div class="item"><label>开票单位：</label>12312</div>
+            <div class="item"><label>开户行名称：</label>中国农业发展银行杨凌农业高新技术产业示范区分行</div>
+            <div class="item"><label>开票日期：</label>2026-05-27</div>
+            <div class="item"><label>所属银行：</label>中国农业发展银行</div>
+            <div class="item"><label>发票金额：</label>20.00</div>
+            <div class="item"><label>银行卡号：</label>12213</div>
+            <div class="item"><label>发票类型：</label>全电发票</div>
+            <div class="item"><label>发票号：</label>22322322233212233231</div>
+            <div class="item"><label>摘要内容：</label>1</div>
+            <div class="item"><label>发票：</label><span class="pdf-icon" title="点击预览">PDF</span></div>
+          </div>
+        </div>
+
+        <!-- 已保存发票卡片 2（演示手工录入兜底） -->
+        <div class="invoice-card" id="card-2">
+          <div class="ops">
+            <a onclick="openModal('edit', 2)">编辑</a><span class="sep">|</span><a onclick="deleteCard(2)">删除</a>
+          </div>
+          <div class="invoice-grid">
+            <div class="item"><label>开票单位：</label>某某科技有限公司</div>
+            <div class="item"><label>开户行名称：</label>招商银行广州分行营业部</div>
+            <div class="item"><label>开票日期：</label>2026-05-20</div>
+            <div class="item"><label>所属银行：</label>招商银行</div>
+            <div class="item"><label>发票金额：</label>1,200.00</div>
+            <div class="item"><label>银行卡号：</label>6222********1234</div>
+            <div class="item"><label>发票类型：</label>普通发票</div>
+            <div class="item"><label>发票号：</label>044001900111 - 12345678</div>
+            <div class="item"><label>摘要内容：</label>实验试剂采购</div>
+            <div class="item"><label>发票：</label><span class="pdf-icon" title="点击预览">JPG</span></div>
+          </div>
+        </div>
+
+        <button class="add-invoice" onclick="openModal('new')">+ 新增发票</button>
+      </div>
+
+      <div class="new-payee">+ 新增收款方</div>
+    </section>
+  </main>
+</div>
+
+<!-- 新增发票弹窗 -->
+<div class="modal-mask" id="invoiceModal">
+  <div class="modal">
+    <div class="modal-recognizing-overlay" id="recognizingOverlay">
+      <div class="recognizing-box">
+        <span class="spinner"></span>
+        <span>发票识别中</span>
+      </div>
+    </div>
+    <div class="modal-header">
+      <span class="title" id="modalTitle">新增发票</span>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 状态条 -->
+      <div class="status-bar info" id="statusBar">
+        <span class="icon">ⓘ</span>
+        <span id="statusText">请先上传发票，系统将自动识别并填写信息。</span>
+        <button class="action" id="statusAction" style="display:none;"></button>
+      </div>
+
+      <!-- 发票上传（现网样式，置顶） -->
+      <div class="field-line invoice-upload-line">
+        <label class="lbl req">发票：</label>
+        <div class="ctrl">
+          <div class="invoice-file-wrap">
+            <div class="invoice-upload-block" id="invoiceUploadBlock">
+              <div class="invoice-file-empty" id="invoiceFileEmpty" onclick="triggerInvoiceUpload()" title="点击上传发票">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 5v10"/>
+                  <path d="M8 9l4-4 4 4"/>
+                  <path d="M5 19h14"/>
+                </svg>
+                <span>上传</span>
+              </div>
+              <div class="invoice-upload-tip" id="invoiceUploadTip">请上传发票图片，支持PNG、JPG、JPEG、PDF、OFD格式上传，文件需小于10M</div>
+            </div>
+            <div class="invoice-file-preview" id="invoiceFilePreview">
+              <div class="file-thumb"><span id="fileIcon">PDF</span></div>
+              <div class="file-actions">
+                <button type="button" class="file-action-btn" title="预览" onclick="previewInvoice(event)">
+                  <svg viewBox="0 0 24 24"><path d="M12 5C7 5 2.73 8.11 1 12.5 2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+                </button>
+                <button type="button" class="file-action-btn" title="删除" onclick="removeInvoiceFile(event)">
+                  <svg viewBox="0 0 24 24"><path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 表单 -->
+      <div class="field-line">
+        <label class="lbl req">开票单位：</label>
+        <div class="ctrl">
+          <input type="text" id="f_company" placeholder="上传发票后自动填写" disabled />
+          <span class="badge" id="b_company" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl">发票类型：</label>
+        <div class="ctrl radio-group">
+          <label><input type="radio" name="invType" value="普通发票" checked disabled /> 普通发票</label>
+          <label><input type="radio" name="invType" value="全电发票" disabled /> 全电发票</label>
+          <span class="badge" id="b_type" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">发票号：</label>
+        <div class="ctrl invoice-no">
+          <input type="text" id="f_code" placeholder="发票代码" disabled style="flex:1;" />
+          <span class="sep">-</span>
+          <input type="text" id="f_no" placeholder="发票号码" disabled style="flex:1;" />
+          <span class="badge" id="b_no" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">发票金额：</label>
+        <div class="ctrl">
+          <input type="text" id="f_amount" placeholder="上传发票后自动填写" disabled />
+          <span class="badge" id="b_amount" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">开票日期：</label>
+        <div class="ctrl">
+          <input type="date" id="f_date" value="2026-05-27" disabled />
+          <span class="badge" id="b_date" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">摘要内容：</label>
+        <div class="ctrl">
+          <input type="text" id="f_summary" placeholder="上传发票后自动填写" disabled />
+          <span class="badge" id="b_summary" style="display:none;">已识别</span>
+        </div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">开户行名称：</label>
+        <div class="ctrl">
+          <input type="text" id="f_bank" placeholder="请输入关键字检索银行" />
+        </div>
+      </div>
+      <div class="hint">收款账户信息需手工填写，系统不识别。</div>
+
+      <div class="field-line">
+        <label class="lbl">所属银行：</label>
+        <div class="ctrl"><input type="text" id="f_bankParent" placeholder="所属银行" disabled /></div>
+      </div>
+
+      <div class="field-line">
+        <label class="lbl req">银行卡号：</label>
+        <div class="ctrl"><input type="text" id="f_card" placeholder="请输入" /></div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn primary" id="saveBtn" disabled onclick="saveInvoice()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">保存成功</div>
+
+<script>
+/**
+ * 演示用：模拟 OCR 流程（V2.1 · 本期不含验真）
+ *  待上传 → 上传中 → 识别中 → 待核对/识别失败 → 待保存
+ *  票种编码映射见 mapInvoiceType()，与 PRD 5.1.1 一致
+ */
+
+const FULL_ELEC_CODES = new Set(['004', '005', '028', '029']);
+const NORMAL_CODES = new Set(['000', '001', '002', '003', '006']);
+const UNSUPPORTED_CODES = new Set([
+  '007','008','009','010','011','012','013','014','015','016',
+  '017','018','019','020','021','022','023','024','025','026','027','030'
+]);
+const INVOICE_TYPE_NAMES = {
+  '000':'增值税专用发票','001':'增值税普通发票','002':'增值税电子普通发票',
+  '003':'增值税电子专用发票','004':'电子发票（增值税专用发票）','005':'电子发票（普通发票）',
+  '006':'增值税普通发票（卷票）','007':'出租车发票','008':'火车票','009':'定额发票',
+  '010':'航空运输电子客票行程单','011':'电子发票（航空运输电子客票行程单）',
+  '012':'非税收入类票据','013':'完税证明','014':'电子医疗票据','015':'通用机打发票',
+  '016':'机动车销售统一发票','017':'火车票（退票）','018':'船票','019':'过路费发票',
+  '020':'客运汽车票','021':'出行行程单','022':'二手车销售统一发票','023':'小票',
+  '024':'海关缴款书','025':'电子发票（铁路电子客票）','026':'票据汇总单',
+  '027':'货物电子收款凭证','028':'电子发票（机动车销售统一发票）',
+  '029':'电子发票（二手车销售统一发票）','030':'支付凭证','031':'其他'
+};
+
+/** OCR 票种编码 → 表单「普通发票/全电发票」 */
+function mapInvoiceType(ocrCode) {
+  const code = String(ocrCode || '').padStart(3, '0');
+  if (FULL_ELEC_CODES.has(code)) return { formType: '全电发票', supported: true, hideCode: true, code, name: INVOICE_TYPE_NAMES[code] };
+  if (NORMAL_CODES.has(code)) return { formType: '普通发票', supported: true, hideCode: false, code, name: INVOICE_TYPE_NAMES[code] };
+  if (UNSUPPORTED_CODES.has(code)) return { formType: null, supported: false, code, name: INVOICE_TYPE_NAMES[code] || '不支持票种' };
+  if (code === '031') return { formType: '普通发票', supported: true, hideCode: false, code, name: '其他', warn: '无法识别票种，请核对发票类型' };
+  return { formType: '普通发票', supported: true, hideCode: false, code, warn: '无法识别票种，请核对发票类型' };
+}
+
+/** 模拟 OCR 返回票面（票种编码由演示下拉框选择） */
+function getDemoOcrFields(typeCode) {
+  const mapped = mapInvoiceType(typeCode);
+  return {
+    typeCode,
+    company: '广州某某医疗科技有限公司',
+    code: mapped.hideCode ? '' : '044001900111',
+    no: mapped.hideCode ? '22322322233212233231' : '12345678',
+    amount: '1200.00',
+    date: '2026-05-20',
+    summary: '实验试剂采购'
+  };
+}
+
+const STATUS_MSG = {
+  idle: '请先上传发票，系统将自动识别并填写信息。',
+  success: '识别完成，请核对下方信息保存。',
+  fail: '识别失败，你可重新识别或手动录入。',
+  manual: '请手动录入下方发票信息。'
+};
+
+/** 发票附件是否必填：必填时识别完成前禁用票面字段 */
+const INVOICE_ATTACHMENT_REQUIRED = true;
+
+const INVOICE_FIELD_IDS = ['f_company', 'f_code', 'f_no', 'f_amount', 'f_date', 'f_summary'];
+
+function setInvoiceFieldPlaceholders(mode) {
+  const idle = {
+    f_company: '上传发票后自动填写',
+    f_code: '发票代码',
+    f_no: '发票号码',
+    f_amount: '上传发票后自动填写',
+    f_summary: '上传发票后自动填写'
+  };
+  INVOICE_FIELD_IDS.filter(id => id !== 'f_date').forEach(id => {
+    document.getElementById(id).placeholder = mode === 'manual' ? '请输入' : idle[id];
+  });
+}
+
+let state = 'idle';
+let editing = null;
+let pendingDemoOutcome = null;
+
+function openModal(mode, cardId, preserveDemoOutcome) {
+  if (!preserveDemoOutcome) pendingDemoOutcome = null;
+  editing = cardId || null;
+  document.getElementById('modalTitle').textContent = mode === 'edit' ? '编辑发票' : '新增发票';
+  document.getElementById('invoiceModal').classList.add('show');
+  resetModal();
+
+  if (mode === 'edit' && cardId === 1) {
+    fillForm({
+      company: '12312', type: '全电发票', code: '', no: '22322322233212233231',
+      amount: '20.00', date: '2026-05-27', summary: '1', hideCode: true
+    });
+    setStatus('info', STATUS_MSG.success);
+    showFile('Invoice-22322322.pdf', 'PDF');
+    document.getElementById('saveBtn').disabled = false;
+    document.getElementById('f_bank').value = '中国农业发展银行杨凌农业高新技术产业示范区分行';
+    document.getElementById('f_bankParent').value = '中国农业发展银行';
+    document.getElementById('f_card').value = '12213';
+  } else if (mode === 'edit' && cardId === 2) {
+    // 回显示例数据（手工录入兜底）
+    enableManualEntry({
+      company: '某某科技有限公司', type: '普通发票', code: '044001900111', no: '12345678',
+      amount: '1200.00', date: '2026-05-20', summary: '实验试剂采购'
+    });
+    setStatus('warn', STATUS_MSG.manual);
+    showFile('invoice-12345678.jpg', 'JPG');
+    document.getElementById('saveBtn').disabled = false;
+    document.getElementById('f_bank').value = '招商银行广州分行营业部';
+    document.getElementById('f_bankParent').value = '招商银行';
+    document.getElementById('f_card').value = '6222********1234';
+  }
+}
+
+function closeModal() {
+  document.getElementById('invoiceModal').classList.remove('show');
+}
+
+function setInvoiceTypeDisabled(disabled) {
+  document.querySelectorAll('input[name=invType]').forEach(r => { r.disabled = disabled; });
+}
+
+/** 发票附件必填时，识别完成前锁定票面字段 */
+function setInvoiceFieldsLocked(locked) {
+  if (!INVOICE_ATTACHMENT_REQUIRED) return;
+  INVOICE_FIELD_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    el.disabled = locked;
+    if (locked) el.classList.remove('recognized');
+  });
+  setInvoiceTypeDisabled(locked);
+}
+
+function showRecognizingOverlay(show) {
+  document.getElementById('recognizingOverlay').classList.toggle('show', show);
+}
+
+function toggleInvoiceCodeField(hide) {
+  const codeEl = document.getElementById('f_code');
+  const sepEl = document.querySelector('.invoice-no .sep');
+  codeEl.style.display = hide ? 'none' : '';
+  sepEl.style.display = hide ? 'none' : '';
+  if (hide) {
+    codeEl.value = '';
+    codeEl.classList.remove('recognized');
+  }
+}
+
+function resetModal() {
+  state = 'idle';
+  showRecognizingOverlay(false);
+  ['f_company','f_code','f_no','f_amount','f_summary','f_bank','f_bankParent','f_card'].forEach(id => {
+    const el = document.getElementById(id);
+    el.value = '';
+    el.classList.remove('recognized');
+  });
+  document.getElementById('f_date').value = '2026-05-27';
+  document.getElementById('f_bank').disabled = false;
+  document.getElementById('f_card').disabled = false;
+  document.getElementById('f_bankParent').disabled = true;
+  ['b_company','b_no','b_amount','b_date','b_summary','b_type'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+    document.getElementById(id).textContent = '已识别';
+    document.getElementById(id).classList.remove('modified');
+  });
+  document.querySelector('input[name=invType][value=普通发票]').checked = true;
+  toggleInvoiceCodeField(false);
+  setInvoiceFieldsLocked(true);
+  setInvoiceFieldPlaceholders('idle');
+  document.getElementById('invoiceUploadBlock').style.display = 'block';
+  document.getElementById('invoiceFilePreview').style.display = 'none';
+  document.getElementById('saveBtn').disabled = true;
+  setStatus('info', STATUS_MSG.idle);
+  hideStatusAction();
+}
+
+function enableAllFormFieldsEditable() {
+  INVOICE_FIELD_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    el.disabled = false;
+    el.classList.remove('recognized');
+  });
+  setInvoiceTypeDisabled(false);
+  document.getElementById('f_bank').disabled = false;
+  document.getElementById('f_card').disabled = false;
+  document.getElementById('f_bankParent').disabled = false;
+  ['b_company','b_no','b_amount','b_date','b_summary','b_type'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  setInvoiceFieldPlaceholders('manual');
+  bindFieldEditBadges();
+}
+
+function showRecognizeFail() {
+  state = 'recognizeFail';
+  showRecognizingOverlay(false);
+  setStatus('warn', STATUS_MSG.fail);
+  setStatusActions([
+    { label: '重新识别', fn: () => reRecognize(), primary: true }
+  ]);
+  enableAllFormFieldsEditable();
+  document.getElementById('saveBtn').disabled = false;
+}
+
+function reRecognize() {
+  resetModal();
+  triggerInvoiceUpload();
+}
+
+function getFileExt(name) {
+  const m = (name || '').match(/\.([a-z0-9]+)$/i);
+  if (!m) return 'PDF';
+  const ext = m[1].toUpperCase();
+  return ext === 'JPEG' ? 'JPG' : ext;
+}
+
+function triggerInvoiceUpload() {
+  if (state === 'recognizing' || state === 'uploading') return;
+  startInvoiceOcr({ name: 'Invoice-' + Date.now() + '.pdf' });
+}
+
+function startInvoiceOcr(file) {
+  if (state === 'recognizing' || state === 'uploading') return;
+
+  const resolvedOutcome = pendingDemoOutcome || 'success';
+  const ext = getFileExt(file.name);
+
+  state = 'uploading';
+  showFile(file.name, ext);
+  setInvoiceFieldsLocked(true);
+
+  setTimeout(() => {
+    state = 'recognizing';
+    showRecognizingOverlay(true);
+    setTimeout(() => {
+      showRecognizingOverlay(false);
+
+      if (resolvedOutcome === 'fail') {
+        showRecognizeFail();
+        return;
+      }
+
+      const typeCode = DEMO_TYPE_CODE;
+      const fields = getDemoOcrFields(typeCode);
+      const mapped = mapInvoiceType(typeCode);
+
+      if (!mapped.supported) {
+        showRecognizeFail();
+        return;
+      }
+
+      fillForm(fields);
+      state = 'ready';
+      setStatus('info', STATUS_MSG.success);
+      hideStatusAction();
+      document.getElementById('saveBtn').disabled = false;
+    }, 1200);
+  }, 400);
+}
+
+function setStatus(type, text) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar ' + type;
+  let iconHtml = type === 'success' ? '<span class="icon">✓</span>'
+                : type === 'error' ? '<span class="icon">✕</span>'
+                : type === 'warn' ? '<span class="icon">!</span>'
+                : type === 'loading' ? '<span class="spinner"></span>'
+                : '<span class="icon">ⓘ</span>';
+  bar.innerHTML = iconHtml + ' <span id="statusText">' + text + '</span><button class="action" id="statusAction" style="display:none;"></button>';
+}
+
+function setStatusAction(label, fn) {
+  const btn = document.getElementById('statusAction');
+  if (!label) { btn.style.display = 'none'; return; }
+  btn.textContent = label;
+  btn.style.display = 'inline-block';
+  btn.onclick = fn;
+}
+function hideStatusAction() {
+  const btn = document.getElementById('statusAction');
+  if (btn) btn.style.display = 'none';
+}
+
+function showFile(name, ext) {
+  document.getElementById('invoiceUploadBlock').style.display = 'none';
+  document.getElementById('invoiceFilePreview').style.display = 'flex';
+  document.getElementById('fileIcon').textContent = ext || 'PDF';
+}
+
+function previewInvoice(e) {
+  e.stopPropagation();
+  const t = document.getElementById('toast');
+  t.textContent = '预览发票附件';
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); t.textContent = '保存成功'; }, 1500);
+}
+
+function removeInvoiceFile(e) {
+  e.stopPropagation();
+  if (!confirm('确定删除该发票附件？')) return;
+  resetModal();
+}
+
+function fillForm(data) {
+  const mapped = data.type ? { formType: data.type, hideCode: data.type === '全电发票', supported: true } : mapInvoiceType(data.typeCode);
+  const formType = mapped.formType || data.type || '普通发票';
+  const hideCode = data.hideCode != null ? data.hideCode : mapped.hideCode;
+
+  document.getElementById('f_company').value = data.company;
+  document.getElementById('f_company').disabled = false;
+  document.getElementById('f_company').classList.add('recognized');
+  document.getElementById('b_company').style.display = 'inline-block';
+
+  const isFullElec = hideCode || formType === '全电发票';
+  document.querySelector('input[name=invType][value="' + formType + '"]').checked = true;
+  setInvoiceTypeDisabled(false);
+  document.getElementById('b_type').style.display = 'inline-block';
+  toggleInvoiceCodeField(isFullElec);
+
+  document.getElementById('f_code').value = isFullElec ? '' : (data.code || '');
+  document.getElementById('f_code').disabled = isFullElec;
+  if (!isFullElec) {
+    document.getElementById('f_code').classList.add('recognized');
+  }
+  document.getElementById('f_no').value = data.no;
+  document.getElementById('f_no').disabled = false;
+  document.getElementById('f_no').classList.add('recognized');
+  document.getElementById('b_no').style.display = 'inline-block';
+
+  document.getElementById('f_amount').value = data.amount;
+  document.getElementById('f_amount').disabled = false;
+  document.getElementById('f_amount').classList.add('recognized');
+  document.getElementById('b_amount').style.display = 'inline-block';
+
+  document.getElementById('f_date').value = data.date;
+  document.getElementById('f_date').disabled = false;
+  document.getElementById('f_date').classList.add('recognized');
+  document.getElementById('b_date').style.display = 'inline-block';
+
+  document.getElementById('f_summary').value = data.summary;
+  document.getElementById('f_summary').disabled = false;
+  document.getElementById('f_summary').classList.add('recognized');
+  document.getElementById('b_summary').style.display = 'inline-block';
+
+  bindFieldEditBadges();
+}
+
+function markInvoiceNoModified() {
+  const b = document.getElementById('b_no');
+  if (b && b.style.display !== 'none') {
+    b.textContent = '已修改';
+    b.classList.add('modified');
+  }
+}
+
+function bindFieldEditBadges() {
+  ['f_company','f_code','f_no','f_amount','f_date','f_summary'].forEach(id => {
+    const el = document.getElementById(id);
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+    const onEdit = function() {
+      if (id === 'f_code' || id === 'f_no') {
+        markInvoiceNoModified();
+        return;
+      }
+      const key = id.split('_')[1];
+      const badgeId = key === 'date' ? 'b_date' : 'b_' + key;
+      const b = document.getElementById(badgeId);
+      if (b && b.style.display !== 'none') {
+        b.textContent = '已修改';
+        b.classList.add('modified');
+      }
+    };
+    clone.addEventListener('input', onEdit);
+    if (id === 'f_date') clone.addEventListener('change', onEdit);
+  });
+  document.querySelectorAll('input[name=invType]').forEach(r => {
+    r.addEventListener('change', function() {
+      const b = document.getElementById('b_type');
+      if (b && b.style.display !== 'none') {
+        b.textContent = '已修改';
+        b.classList.add('modified');
+      }
+      toggleInvoiceCodeField(this.value === '全电发票');
+    });
+  });
+}
+
+function enableManualEntry(data) {
+  if (data) {
+    document.getElementById('f_company').value = data.company;
+    document.getElementById('f_code').value = data.code || '';
+    document.getElementById('f_no').value = data.no;
+    document.getElementById('f_amount').value = data.amount;
+    document.getElementById('f_date').value = data.date;
+    document.getElementById('f_summary').value = data.summary;
+    document.querySelector('input[name=invType][value="' + data.type + '"]').checked = true;
+    toggleInvoiceCodeField(data.type === '全电发票');
+  } else {
+    toggleInvoiceCodeField(false);
+  }
+  ['f_company','f_code','f_no','f_amount','f_date','f_summary'].forEach(id => {
+    const el = document.getElementById(id);
+    el.disabled = false;
+    el.classList.remove('recognized');
+  });
+  setInvoiceTypeDisabled(false);
+  ['b_company','b_no','b_amount','b_date','b_summary','b_type'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  bindFieldEditBadges();
+  state = 'manual';
+}
+
+function switchToManualEntry() {
+  if (!confirm('切换为手动录入后，发票信息需自行填写，是否继续？')) return;
+  enableManualEntry();
+  setStatus('warn', STATUS_MSG.manual);
+  document.getElementById('saveBtn').disabled = false;
+  hideStatusAction();
+}
+
+function setStatusActions(actions) {
+  const bar = document.getElementById('statusBar');
+  const wrap = document.createElement('span');
+  wrap.className = 'status-actions';
+  actions.forEach(({ label, fn, primary }) => {
+    const btn = document.createElement('button');
+    btn.className = primary ? 'action action-primary' : 'action';
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.onclick = fn;
+    wrap.appendChild(btn);
+  });
+  bar.appendChild(wrap);
+}
+
+/** 演示默认票种：002 增值税电子普通发票 */
+const DEMO_TYPE_CODE = '002';
+
+function demoSimulate(outcome) {
+  pendingDemoOutcome = outcome;
+  openModal('new', null, true);
+}
+
+function saveInvoice() {
+  closeModal();
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+function deleteCard(id) {
+  if (!confirm('确定删除该发票？')) return;
+  const el = document.getElementById('card-' + id);
+  if (el) el.remove();
+}
+</script>
+</body>
+</html>
