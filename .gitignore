@@ -1,0 +1,4 @@
+# 不上传 PRD / Markdown 文档
+*.md
+
+.DS_Store
