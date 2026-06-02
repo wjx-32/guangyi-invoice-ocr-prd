@@ -704,7 +704,7 @@
       <h2 class="block-title">基本信息</h2>
 
       <div class="demo-bar">
-        <b>原型演示（V2.1）：</b> 本期仅 OCR 识别与自动回填，<b>不含验真</b>。
+        <b>原型演示（V2.2）：</b> OCR 识别 + 自动回填 + <b>验真（模拟）</b>。
         <button class="demo-btn" onclick="demoSimulate('success')">模拟成功</button>
         <button class="demo-btn demo-btn-fail" onclick="demoSimulate('fail')">模拟失败</button>
         <span style="color:#874d00;">选择后打开弹窗，点击「上传」自动模拟上传并识别。</span>
@@ -933,8 +933,8 @@
 
 <script>
 /**
- * 演示用：模拟 OCR 流程（V2.1 · 本期不含验真）
- *  待上传 → 上传中 → 识别中 → 待核对/识别失败 → 待保存
+ * 演示用：模拟 OCR + 验真流程（V2.2）
+ *  待上传 → 上传中 → 识别中 → 验真中 → 待核对/验真失败 → 待保存
  *  票种编码映射见 mapInvoiceType()，与 PRD 5.1.1 一致
  */
 
@@ -977,14 +977,16 @@ function getDemoOcrFields(typeCode) {
     no: mapped.hideCode ? '22322322233212233231' : '12345678',
     amount: '1200.00',
     date: '2026-05-20',
-    summary: '实验试剂采购'
+    summary: '实验试剂采购',
+    checkCode: '123'
   };
 }
 
 const STATUS_MSG = {
   idle: '请先上传发票，系统将自动识别并填写信息。',
-  success: '识别完成，请核对下方信息保存。',
-  fail: '识别失败，你可重新识别或手动录入。',
+  success: '识别与验真完成，请核对下方信息保存。',
+  verifyLoading: '发票验真中...',
+  fail: '验真失败，你可重新识别或手动录入。',
   manual: '请手动录入下方发票信息。'
 };
 
@@ -1181,12 +1183,43 @@ function startInvoiceOcr(file) {
       }
 
       fillForm(fields);
-      state = 'ready';
-      setStatus('info', STATUS_MSG.success);
-      hideStatusAction();
-      document.getElementById('saveBtn').disabled = false;
+      startInvoiceVerify(fields, resolvedOutcome);
     }, 1200);
   }, 400);
+}
+
+function buildVerifyPayload(fields) {
+  const payload = {
+    invoiceCode: fields.code || '',
+    invoiceNumber: fields.no || '',
+    invoiceDate: String(fields.date || '').replace(/-/g, ''),
+    checkCode: fields.checkCode || ''
+  };
+  // 接口说明：金额 与 校验码 二选一，优先传校验码
+  if (!payload.checkCode) payload.invoiceAmount = fields.amount || '';
+  return payload;
+}
+
+function startInvoiceVerify(fields, outcome) {
+  state = 'verifying';
+  document.getElementById('saveBtn').disabled = true;
+  setStatus('loading', STATUS_MSG.verifyLoading);
+  hideStatusAction();
+
+  const verifyPayload = buildVerifyPayload(fields);
+  // 原型演示：真实环境由后端调用 checkTicket 接口
+  console.log('verifyPayload(checkTicket):', verifyPayload);
+
+  setTimeout(() => {
+    if (outcome === 'fail') {
+      showRecognizeFail();
+      return;
+    }
+    state = 'ready';
+    setStatus('info', STATUS_MSG.success);
+    hideStatusAction();
+    document.getElementById('saveBtn').disabled = false;
+  }, 800);
 }
 
 function setStatus(type, text) {
