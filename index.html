@@ -244,6 +244,38 @@
     color: #262626;
   }
   .invoice-grid .item label { color: #595959; margin-right: 6px; }
+  .verify-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    margin-left: 8px;
+    border-radius: 2px;
+    font-size: 12px;
+    line-height: 18px;
+    border: 1px solid transparent;
+    vertical-align: middle;
+  }
+  .verify-tag-pending {
+    color: #0958d9;
+    background: #e6f4ff;
+    border-color: #91caff;
+  }
+  .verify-tag-pass {
+    color: #389e0d;
+    background: #f6ffed;
+    border-color: #b7eb8f;
+  }
+  .verify-tag-fail {
+    color: #d46b08;
+    background: #fff7e6;
+    border-color: #ffd591;
+  }
+  .verify-tag-none {
+    color: #8c8c8c;
+    background: #fafafa;
+    border-color: #d9d9d9;
+  }
   .pdf-icon {
     display: inline-flex;
     align-items: center;
@@ -764,7 +796,7 @@
             <div class="item"><label>发票金额：</label>20.00</div>
             <div class="item"><label>银行卡号：</label>12213</div>
             <div class="item"><label>发票类型：</label>全电发票</div>
-            <div class="item"><label>发票号：</label>22322322233212233231</div>
+            <div class="item"><label>发票号：</label>22322322233212233231<span class="verify-tag verify-tag-none" id="verify-tag-1">未验真</span></div>
             <div class="item"><label>摘要内容：</label>1</div>
             <div class="item"><label>发票：</label><span class="pdf-icon" title="点击预览">PDF</span></div>
           </div>
@@ -783,7 +815,7 @@
             <div class="item"><label>发票金额：</label>1,200.00</div>
             <div class="item"><label>银行卡号：</label>6222********1234</div>
             <div class="item"><label>发票类型：</label>普通发票</div>
-            <div class="item"><label>发票号：</label>044001900111 - 12345678</div>
+            <div class="item"><label>发票号：</label>044001900111 - 12345678<span class="verify-tag verify-tag-none" id="verify-tag-2">未验真</span></div>
             <div class="item"><label>摘要内容：</label>实验试剂采购</div>
             <div class="item"><label>发票：</label><span class="pdf-icon" title="点击预览">JPG</span></div>
           </div>
@@ -984,7 +1016,7 @@ function getDemoOcrFields(typeCode) {
 
 const STATUS_MSG = {
   idle: '请先上传发票，系统将自动识别并填写信息。',
-  success: '识别与验真完成，请核对下方信息保存。',
+  success: '识别完成，请核对下方信息保存。',
   verifyLoading: '发票验真中...',
   fail: '验真失败，你可重新识别或手动录入。',
   manual: '请手动录入下方发票信息。'
@@ -1155,7 +1187,6 @@ function triggerInvoiceUpload() {
 function startInvoiceOcr(file) {
   if (state === 'recognizing' || state === 'uploading') return;
 
-  const resolvedOutcome = pendingDemoOutcome || 'success';
   const ext = getFileExt(file.name);
 
   state = 'uploading';
@@ -1168,11 +1199,6 @@ function startInvoiceOcr(file) {
     setTimeout(() => {
       showRecognizingOverlay(false);
 
-      if (resolvedOutcome === 'fail') {
-        showRecognizeFail();
-        return;
-      }
-
       const typeCode = DEMO_TYPE_CODE;
       const fields = getDemoOcrFields(typeCode);
       const mapped = mapInvoiceType(typeCode);
@@ -1183,7 +1209,10 @@ function startInvoiceOcr(file) {
       }
 
       fillForm(fields);
-      startInvoiceVerify(fields, resolvedOutcome);
+      state = 'ready';
+      setStatus('info', STATUS_MSG.success);
+      hideStatusAction();
+      document.getElementById('saveBtn').disabled = false;
     }, 1200);
   }, 400);
 }
@@ -1200,26 +1229,66 @@ function buildVerifyPayload(fields) {
   return payload;
 }
 
-function startInvoiceVerify(fields, outcome) {
-  state = 'verifying';
-  document.getElementById('saveBtn').disabled = true;
-  setStatus('loading', STATUS_MSG.verifyLoading);
-  hideStatusAction();
+function collectVerifyFieldsFromForm() {
+  return {
+    code: document.getElementById('f_code').value.trim(),
+    no: document.getElementById('f_no').value.trim(),
+    date: document.getElementById('f_date').value,
+    amount: document.getElementById('f_amount').value.trim(),
+    // 当前原型无校验码输入框，先用演示默认值
+    checkCode: '123'
+  };
+}
 
+function startInvoiceVerifyAfterSave(fields, outcome) {
   const verifyPayload = buildVerifyPayload(fields);
-  // 原型演示：真实环境由后端调用 checkTicket 接口
+  // 原型演示：真实环境应在后端调用 checkTicket 接口
   console.log('verifyPayload(checkTicket):', verifyPayload);
+
+  const t = document.getElementById('toast');
+  t.textContent = STATUS_MSG.verifyLoading;
+  t.classList.add('show');
 
   setTimeout(() => {
     if (outcome === 'fail') {
-      showRecognizeFail();
+      t.textContent = '验真失败，请在列表中查看并处理';
+      setVerifyTagState(1, 'fail');
+      setTimeout(() => {
+        t.classList.remove('show');
+        t.textContent = '保存成功';
+      }, 1800);
       return;
     }
-    state = 'ready';
-    setStatus('info', STATUS_MSG.success);
-    hideStatusAction();
-    document.getElementById('saveBtn').disabled = false;
+    t.textContent = '验真完成';
+    setVerifyTagState(1, 'pass');
+    setTimeout(() => {
+      t.classList.remove('show');
+      t.textContent = '保存成功';
+    }, 1200);
   }, 800);
+}
+
+function setVerifyTagState(cardId, state) {
+  const el = document.getElementById('verify-tag-' + cardId);
+  if (!el) return;
+  el.className = 'verify-tag';
+  if (state === 'pending') {
+    el.classList.add('verify-tag-pending');
+    el.textContent = '验真中';
+    return;
+  }
+  if (state === 'pass') {
+    el.classList.add('verify-tag-pass');
+    el.textContent = '验真通过';
+    return;
+  }
+  if (state === 'fail') {
+    el.classList.add('verify-tag-fail');
+    el.textContent = '验真失败';
+    return;
+  }
+  el.classList.add('verify-tag-none');
+  el.textContent = '未验真';
 }
 
 function setStatus(type, text) {
@@ -1408,10 +1477,14 @@ function demoSimulate(outcome) {
 }
 
 function saveInvoice() {
+  const outcome = pendingDemoOutcome || 'success';
+  const verifyFields = collectVerifyFieldsFromForm();
+  setVerifyTagState(1, 'pending');
   closeModal();
   const t = document.getElementById('toast');
+  t.textContent = '保存成功';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 1500);
+  setTimeout(() => startInvoiceVerifyAfterSave(verifyFields, outcome), 500);
 }
 
 function deleteCard(id) {
