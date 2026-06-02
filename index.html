@@ -1198,6 +1198,12 @@ function startInvoiceOcr(file) {
     showRecognizingOverlay(true);
     setTimeout(() => {
       showRecognizingOverlay(false);
+      // 演示模式：点「模拟失败」时先走 OCR 失败分支，支持一次失败后重新识别
+      if (pendingDemoOutcome === 'fail') {
+        pendingDemoOutcome = 'success';
+        showRecognizeFail();
+        return;
+      }
 
       const typeCode = DEMO_TYPE_CODE;
       const fields = getDemoOcrFields(typeCode);
